@@ -28,11 +28,11 @@ def text_to_zx_wave(text, filename):
     binary_data = ''.join(format(ord(char), '08b') for char in text)
     
     # Add pilot tone and sync byte (not fully accurate but for demonstration)
-   # wave = create_tone(2000, 1.0)  # 1-second pilot tone
+    wave = create_tone(1000, 1.0/220.0*128.0 )  # 1-second pilot tone
     
 
     #wave = np.concatenate((wave, create_tone(FREQ_0, 1/220.0)))  # Sync byte (just using one '0' bit for simplicity)
-    wave=[]
+    
     # Encode the binary data into the wave
     for bit in binary_data:
         wave = append_bit(wave, bit)
