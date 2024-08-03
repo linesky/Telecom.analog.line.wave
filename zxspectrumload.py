@@ -1,60 +1,89 @@
-
 import numpy as np
-from scipy.io.wavfile import read
-import matplotlib.pyplot as plt
-#pip install numpy scipy matplotlib
+import wave
 
-# Frequências usadas pelo ZX Spectrum
-FREQ_0 = 1300  # Frequência para o bit 0
-FREQ_1 = 2600  # Frequência para o bit 1
-SAMPLING_RATE = 44100  # Taxa de amostragem para o arquivo WAV
+def read_wave_file(filename):
+    """Lê os dados de áudio de um arquivo WAV."""
+    with wave.open(filename, 'rb') as wf:
+        sample_rate = wf.getframerate()
+        num_frames = wf.getnframes()
+        audio_data = wf.readframes(num_frames)
+        audio_data = np.frombuffer(audio_data, dtype=np.int16)
+    return audio_data, sample_rate
 
-def detect_frequency(samples):
-    # Calcula a FFT (Fast Fourier Transform) para detectar a frequência dominante
-    fft_result = np.fft.fft(samples)
-    frequencies = np.fft.fftfreq(len(samples), 1 / SAMPLING_RATE)
-    peak_frequency = abs(frequencies[np.argmax(np.abs(fft_result))])
-    return peak_frequency
+def decode_zx_spectrum_audio(audio_data, sample_rate):
+    """Decodifica o áudio ZX Spectrum em dados binários."""
+    pulse_0_length = int(sample_rate / 1000)  # Duração do pulso para '0' em samples
+    pulse_1_length = int(sample_rate / 500)   # Duração do pulso para '1' em samples
 
-def zx_wave_to_text(filename):
-    # Ler o arquivo WAV
-    sampling_rate, data = read(filename)
-    data = data / 32767.0  # Normalizar para o intervalo de -1 a 1
+    threshold = 0.25 * 32767  # Um valor de threshold arbitrário para distinguir pulsos
+    bitstream = []
     
-    if data.ndim > 1:  # Se o áudio for estéreo, pegar apenas um canal
-        data = data[:, 0]
+    i = 0
+    while i < len(audio_data):
+        if audio_data[i] > threshold:
+            # Contar a duração do pulso
+            pulse_length = 1
+            while i + pulse_length < len(audio_data) and audio_data[i + pulse_length] > threshold:
+                pulse_length += 1
 
-    # Parâmetros de detecção de bits
-    bit_duration = int(SAMPLING_RATE / 220.0)
-    threshold = (FREQ_0 + FREQ_1) / 2.0
+            if pulse_length >= pulse_1_length:
+                bitstream.append('1')
+            else:
+                bitstream.append('0')
+            
+            # Pular a duração do pulso e a pausa entre pulsos
+            i += pulse_length + pulse_0_length
+        else:
+            i += 1
     
-    # Detectar os bits na onda
-    bits = []
-    for i in range(0, len(data), bit_duration):
-        bit_samples = data[i:i + bit_duration]
-        if len(bit_samples) == bit_duration:
-            frequency = detect_frequency(bit_samples)
-            bit = '0' if frequency < threshold else '1'
-            bits.append(bit)
+    return ''.join(bitstream)
 
-    # Converter os bits em bytes
-    binary_data = ''.join(bits)
-    byte_data = [binary_data[i:i+8] for i in range(0, len(binary_data), 8)]
-    
-    # Convert bytes to text
-    text = ''.join([chr(int(byte, 2)) for byte in byte_data if int(byte, 2) != 0])
-    return text
+def binary_to_text(binary_data):
+    """Converte dados binários em texto."""
+    chars = []
+    for i in range(0, len(binary_data), 8):
+        byte = binary_data[i:i+8]
+        if len(byte) == 8:
+            chars.append(chr(int(byte, 2)))
+    return ''.join(chars)
+
+def binary_to_file(binary_data, output_filename):
+    """Converte dados binários em um arquivo binário."""
+    byte_array = bytearray()
+    for i in range(0, len(binary_data), 8):
+        byte = binary_data[i:i+8]
+        if len(byte) == 8:
+            byte_array.append(int(byte, 2))
+    with open(output_filename, 'wb') as f:
+        f.write(byte_array)
 
 def main():
-    # Get filename from user
-    input_filename = input("Enter the name of the WAV file: ")
+    # Solicita o nome do arquivo WAV ao usuário
+    filename = input("Digite o nome do arquivo WAV: ")
+
+    # Lê o arquivo WAV
+    audio_data, sample_rate = read_wave_file(filename)
     
-    # Convert ZX Spectrum WAV format to text
-    text = zx_wave_to_text(input_filename)
+    # Decodifica o áudio para dados binários
+    binary_data = decode_zx_spectrum_audio(audio_data, sample_rate)
     
-    # Print the extracted text
-    print("Extracted text:")
+    # Separa o texto dos dados binários
+    text_length = 128  # Exemplo: ajusta de acordo com o seu caso
+    #text_length=binary_data.find("\0")
+    text_binary = binary_data[:text_length*8]
+    file_binary = binary_data[text_length*8:]
+    
+    # Converte o texto binário de volta para texto
+    text = binary_to_text(text_binary)
+    
+    # Converte os dados binários para um arquivo binário
+    output_filename = "output.bin"
+    binary_to_file(file_binary, output_filename)
+    
+    # Exibe o texto e salva o arquivo binário
+    print("Texto decodificado:")
     print(text)
+    print(f"Arquivo binário salvo em {output_filename}")
 print("\x1bc\x1b[47;34m")
 if __name__ == "__main__":
     main()
